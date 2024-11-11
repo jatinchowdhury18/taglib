@@ -27,18 +27,20 @@
 #include "tstring.h"
 #include "tdebug.h"
 
-#ifdef _WIN32
+#define USE_WINAPI 0
+
+#if USE_WINAPI
 # include <windows.h>
 #else
 # include <stdio.h>
-# include <unistd.h>
+# include <io.h>
 #endif
 
 using namespace TagLib;
 
 namespace
 {
-#ifdef _WIN32
+#if USE_WINAPI
 
   // Uses Win32 native API instead of POSIX API to reduce the resource consumption.
 
@@ -88,11 +90,11 @@ namespace
 
 #else   // _WIN32
 
-  struct FileNameHandle : public std::string
-  {
-    FileNameHandle(FileName name) : std::string(name) {}
-    operator FileName () const { return c_str(); }
-  };
+  // struct FileNameHandle : public std::string
+  // {
+  //   FileNameHandle(FileName name) : std::string(name) {}
+  //   operator FileName () const { return c_str(); }
+  // };
 
   typedef FILE* FileHandle;
 
@@ -100,7 +102,20 @@ namespace
 
   FileHandle openFile(const FileName &path, bool readOnly)
   {
-    return fopen(path, readOnly ? "rb" : "rb+");
+      FILE* file;
+      if ((const wchar_t*) path != nullptr)
+          file = _wfopen(path, readOnly ? L"rb" : L"rb+");
+      else
+          file = fopen(path, readOnly ? "rb" : "rb+");
+
+      // if (file == nullptr && readOnly)
+      // {
+      //     const auto err = _wfopen_s(&file, path, readOnly ? L"rb" : L"rb+");
+      //     auto err_str = strerror(err);
+      //     printf(err_str);
+      // }
+
+      return file;
   }
 
   FileHandle openFile(const int fileDescriptor, bool readOnly)
@@ -137,7 +152,7 @@ public:
   }
 
   FileHandle file;
-  FileNameHandle name;
+  FileName name;
   bool readOnly;
 };
 
@@ -370,7 +385,7 @@ void FileStream::seek(long offset, Position p)
     return;
   }
 
-#ifdef _WIN32
+#if USE_WINAPI
 
   if(p != Beginning && p != Current && p != End) {
     debug("FileStream::seek() -- Invalid Position value.");
@@ -409,7 +424,7 @@ void FileStream::seek(long offset, Position p)
 
 void FileStream::clear()
 {
-#ifdef _WIN32
+#if USE_WINAPI
 
   // NOP
 
@@ -422,7 +437,7 @@ void FileStream::clear()
 
 long FileStream::tell() const
 {
-#ifdef _WIN32
+#if USE_WINAPI
 
   const LARGE_INTEGER zero = {};
   LARGE_INTEGER position;
@@ -450,7 +465,7 @@ long FileStream::length()
     return 0;
   }
 
-#ifdef _WIN32
+#if USE_WINAPI
 
   LARGE_INTEGER fileSize;
 
@@ -482,7 +497,7 @@ long FileStream::length()
 
 void FileStream::truncate(long length)
 {
-#ifdef _WIN32
+#if USE_WINAPI
 
   const long currentPos = tell();
 
@@ -497,7 +512,7 @@ void FileStream::truncate(long length)
 #else
 
   fflush(d->file);
-  const int error = ftruncate(fileno(d->file), length);
+  const int error = _chsize_s(fileno(d->file), length);
   if(error != 0)
     debug("FileStream::truncate() -- Couldn't truncate the file.");
 
